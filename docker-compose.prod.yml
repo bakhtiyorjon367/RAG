@@ -1,0 +1,36 @@
+# Production-like stack (Supabase Cloud; no local Postgres)
+# Usage:
+#   cp .env.example .env   # fill secrets
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      FASTEMBED_CACHE_PATH: /cache/fastembed
+    volumes:
+      - fastembed_cache:/cache/fastembed
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  fastembed_cache:
