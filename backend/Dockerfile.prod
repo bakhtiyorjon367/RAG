@@ -14,6 +14,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
+ENV FASTEMBED_CACHE_PATH=/app/.fastembed_cache
+ENV EMBEDDING_MODEL=intfloat/multilingual-e5-base
+
+# Bake embedding weights into the image so EC2 does not download ~1 GB at startup.
+RUN mkdir -p /app/.fastembed_cache && python -c "\
+import os; \
+from fastembed import TextEmbedding; \
+TextEmbedding(model_name=os.environ['EMBEDDING_MODEL'])"
 
 EXPOSE 8000
 

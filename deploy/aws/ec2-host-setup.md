@@ -8,9 +8,9 @@ Backend images are pushed to **GitHub Container Registry**:
 
 ## 1. Instance & security group
 
-- Instance: t3.medium minimum (4 GB RAM). The e5-large embedding model is
-  memory-hungry on load; if you see OOM, move to t3.large or add swap.
-- EBS volume: >= 20-30 GB (model cache ~2 GB + image ~1.5 GB + dist + OS).
+- Instance: t3.small/t3.medium (2–4 GB RAM). Default model is
+  `multilingual-e5-base` (~1 GB baked in image, ~1 GB RAM at load).
+- EBS volume: >= 20 GB (image ~2 GB + OS + Docker layers).
 - Security group inbound: open **80** (HTTP) and **22** (SSH) only.
   Do NOT expose 8000 — the backend binds to `127.0.0.1:8000` and is only
   reached through nginx.
@@ -63,9 +63,22 @@ for this deploy path.
 
 ## Notes
 
-- First deploy: CI creates the GHCR package on first push. The backend
-  downloads the embedding model (~2 GB) into the `fastembed_cache` Docker
-  volume before `/health` passes (workflow waits up to ~3 min).
+- First deploy: CI bakes the e5-base embedding model (~1 GB) into the Docker
+  image. EC2 needs ~3 GB free for `docker pull` (~2 GB image). Run
+  `docker system prune -af` if disk is above ~85% full before redeploying.
+- If deploy failed with **No space left on device**, SSH in and free space, then
+  re-run the workflow:
+
+  ```bash
+  docker stop rag-backend 2>/dev/null; docker rm rag-backend 2>/dev/null
+  docker volume rm fastembed_cache 2>/dev/null
+  docker system prune -af
+  df -h /
+  ```
+
+  In AWS Console: EC2 → Volumes → modify root volume to **30 GB**, then on the
+  instance: `sudo growpart /dev/nvme0n1 1 && sudo resize2fs /dev/nvme0n1p1`
+  (device name may differ — check `lsblk`).
 - Frontend is built with `VITE_API_URL=""` so it calls relative `/api/v1/...`,
   which nginx proxies to the backend.
 - HTTP only for now. Add HTTPS later with certbot or an ALB.

@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str
     SUPABASE_JWT_SECRET: str = ""  # No longer required; auth uses Supabase API
 
-    # Embedding (BGE-M3: 1024-dim multilingual, ONNX via fastembed)
-    EMBEDDING_MODEL: str = "intfloat/multilingual-e5-large"
-    EMBEDDING_DIM: int = 1024
+    # Embedding (multilingual E5-base: 768-dim, ONNX via fastembed)
+    EMBEDDING_MODEL: str = "intfloat/multilingual-e5-base"
+    EMBEDDING_DIM: int = 768
     FASTEMBED_CACHE_PATH: str = ""  # If set, applied to os.environ before loading model
 
     # Chunking (character-based for BGE-M3; CHUNK_SIZE/OVERLAP in characters)

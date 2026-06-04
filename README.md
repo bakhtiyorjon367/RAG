@@ -90,7 +90,7 @@ npm run dev
 | **PDF extraction** | PyMuPDF4LLM (Markdown-oriented, no torch) |
 | **DOCX extraction** | python-docx |
 | **HTML extraction** | BeautifulSoup4 + lxml |
-| **Embeddings** | fastembed (ONNX, CPU-only) — `intfloat/multilingual-e5-large` (1024-dim) |
+| **Embeddings** | fastembed (ONNX, CPU-only) — `intfloat/multilingual-e5-base` (768-dim) |
 | **Reranking** | FlashRank (ONNX) — `jinaai/jina-reranker-v2-base-multilingual` |
 | **LLM / Chat** | Google Gemini (`gemini-2.5-flash`) via `google-genai` |
 | **Korean FTS** | python-mecab-ko (morphological tokenization) |
@@ -123,7 +123,7 @@ flowchart TD
 
         Extract["ExtractionService\nPyMuPDF4LLM · python-docx · BS4"]
         Chunk["ChunkingService\n512 chars · 50 overlap"]
-        Embed["EmbeddingService\nfastembed ONNX\nmultilingual-e5-large 1024-dim"]
+        Embed["EmbeddingService\nfastembed ONNX\nmultilingual-e5-base 768-dim"]
         SearchSvc["SearchService\nVector + FTS + RRF + FlashRank rerank"]
         LLM["LLMService\nGemini streaming SSE"]
     end
@@ -224,8 +224,8 @@ Copy `.env.example` to `.env` and fill in the values below.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-large` | fastembed model name |
-| `EMBEDDING_DIM` | `1024` | Embedding vector dimension |
+| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | fastembed model name |
+| `EMBEDDING_DIM` | `768` | Embedding vector dimension |
 | `CHUNK_SIZE` | `512` | Characters per chunk |
 | `CHUNK_OVERLAP` | `50` | Overlap between adjacent chunks |
 | `RERANK_MODEL` | `jinaai/jina-reranker-v2-base-multilingual` | FlashRank reranker model |
@@ -323,7 +323,7 @@ Upload file
     │     MD/TXT → read as-is
     │
     ├─ Chunk text (512 chars, 50-char overlap, recursive splitter)
-    ├─ Embed chunks (fastembed, multilingual-e5-large, 1024-dim)
+    ├─ Embed chunks (fastembed, multilingual-e5-base, 768-dim)
     └─ Insert chunks + vectors into Supabase (pgvector)
 ```
 

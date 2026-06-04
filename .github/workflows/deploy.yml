@@ -99,31 +99,58 @@ jobs:
           docker push $IMAGE_NAME:$IMAGE_TAG
           docker push $IMAGE_NAME:latest
 
+      - name: Verify GHCR pull credentials
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          if [ -z "$GHCR_PAT" ]; then
+            echo "::error::Repository secret GHCR_PAT is missing or empty."
+            echo "Create a GitHub PAT with read:packages and add it as GHCR_PAT."
+            echo "See deploy/server/README.md — or make the GHCR package public and skip login."
+            exit 1
+          fi
+
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GHCR_USER: ${{ github.repository_owner }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE_NAME
+          envs: IMAGE_NAME,GHCR_PAT,GHCR_USER
           script: |
             set -e
 
             # Pull private GHCR images (PAT with read:packages — see deploy/server/README.md)
-            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
-              -u "${{ github.repository_owner }}" --password-stdin
+            if [ -z "$GHCR_PAT" ]; then
+              echo "ERROR: GHCR_PAT was not forwarded to the host. Check workflow envs."
+              exit 1
+            fi
+            echo "$GHCR_PAT" | docker login ghcr.io \
+              -u "$GHCR_USER" --password-stdin
+
+            docker stop rag-backend 2>/dev/null || true
+            docker rm rag-backend 2>/dev/null || true
+            # Drop stale partial model downloads; weights are baked into the image now.
+            docker volume rm fastembed_cache 2>/dev/null || true
+            docker system prune -af
+
+            echo "Disk before pull:"
+            df -h / | tail -1
+            AVAIL_KB=$(df / | awk 'NR==2 {print $4}')
+            if [ "$AVAIL_KB" -lt 3145728 ]; then
+              echo "WARNING: less than 3 GB free on /. Run docker system prune -af or expand EBS (see deploy/aws/ec2-host-setup.md)."
+            fi
 
             docker pull "$IMAGE_NAME:latest"
-
-            docker stop rag-backend || true
-            docker rm rag-backend || true
 
             # Bind to localhost only; host nginx proxies /api -> 127.0.0.1:8000
             docker run -d \
               --name rag-backend \
               --restart unless-stopped \
               -p 127.0.0.1:8000:8000 \
-              -v fastembed_cache:/app/.fastembed_cache \
               -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
               -e SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
               -e SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
@@ -131,13 +158,13 @@ jobs:
               -e FASTEMBED_CACHE_PATH=/app/.fastembed_cache \
               "$IMAGE_NAME:latest"
 
-            echo "Waiting for backend health (model load/download may take a few minutes on first deploy)..."
-            for i in $(seq 1 60); do
+            echo "Waiting for backend health (model load into RAM may take a few minutes on first deploy)..."
+            for i in $(seq 1 120); do
               if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
                 echo "Backend healthy after ~$((i*3))s"
                 break
               fi
-              if [ "$i" -eq 60 ]; then
+              if [ "$i" -eq 120 ]; then
                 echo "Backend did not become healthy in time. Recent logs:"
                 docker logs --tail 50 rag-backend || true
                 exit 1

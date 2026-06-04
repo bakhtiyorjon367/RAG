@@ -1,12 +1,12 @@
 -- ============================================================
--- RAG Document Search Engine — Full Migration (E5-Large Edition)
+-- RAG Document Search Engine — Full Migration (E5-Base Edition)
 -- ============================================================
 
 -- 1. Enable extensions
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Cleanup (Ensure we start fresh for 1024 dimensions)
+-- 2. Cleanup (Ensure we start fresh for 768 dimensions)
 DROP FUNCTION IF EXISTS match_chunks(vector, int, uuid, uuid[]);
 DROP FUNCTION IF EXISTS match_chunks(vector, integer, uuid, uuid[], float);
 DROP FUNCTION IF EXISTS keyword_search_chunks(text, int, uuid, uuid[]);
@@ -53,19 +53,19 @@ CREATE TRIGGER documents_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- 4. Chunks table (Updated to 1024)
+-- 4. Chunks table (768-dim for multilingual-e5-base)
 CREATE TABLE chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
-    embedding vector(1024), -- UPDATED FOR E5-LARGE
+    embedding vector(768),
     token_count INTEGER NOT NULL DEFAULT 0,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- HNSW Index for 1024 dimensions
+-- HNSW Index for 768 dimensions
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx
     ON chunks USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
@@ -109,7 +109,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- 6. RPC: Semantic Search (match_chunks)
 CREATE OR REPLACE FUNCTION match_chunks(
-    query_embedding vector(1024),
+    query_embedding vector(768),
     match_count int DEFAULT 10,
     p_user_id uuid DEFAULT NULL,
     p_document_ids uuid[] DEFAULT NULL,
