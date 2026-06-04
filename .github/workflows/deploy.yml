@@ -73,16 +73,18 @@ jobs:
           strip_components: 2
           overwrite: true
 
-      # Flat /tmp names — appleboy scp preserves deploy/... paths otherwise.
+      # Stage under workspace — appleboy/scp runs in a container and cannot see runner /tmp.
       - name: Stage nginx files for upload
         run: |
+          mkdir -p .deploy-staging
           if [ "${{ env.RAG_NGINX_PORT }}" = "8080" ]; then
-            cp deploy/nginx/rag-port8080.conf /tmp/rag-nginx.conf
+            cp deploy/nginx/rag-port8080.conf .deploy-staging/rag-nginx.conf
           else
-            cp deploy/nginx/rag.conf /tmp/rag-nginx.conf
+            cp deploy/nginx/rag.conf .deploy-staging/rag-nginx.conf
           fi
-          cp deploy/server/apply-nginx.sh /tmp/rag-apply-nginx.sh
-          chmod +x /tmp/rag-apply-nginx.sh
+          cp deploy/server/apply-nginx.sh .deploy-staging/rag-apply-nginx.sh
+          chmod +x .deploy-staging/rag-apply-nginx.sh
+          ls -la .deploy-staging/
 
       - name: Copy nginx files to EC2 host
         uses: appleboy/scp-action@v0.1.7
@@ -90,8 +92,9 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "/tmp/rag-nginx.conf,/tmp/rag-apply-nginx.sh"
+          source: ".deploy-staging/"
           target: "/tmp"
+          strip_components: 1
           overwrite: true
 
       - name: Apply nginx on EC2
@@ -105,7 +108,13 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: RAG_NGINX_COEXIST,RAG_SMOKE_PORT
           script: |
-            bash /tmp/rag-apply-nginx.sh /tmp/rag-nginx.conf
+            CONF="/tmp/rag-nginx.conf"
+            SCRIPT="/tmp/rag-apply-nginx.sh"
+            [ -f "$CONF" ] || CONF="$(find /tmp -maxdepth 3 -name 'rag-nginx.conf' | head -1)"
+            [ -f "$SCRIPT" ] || SCRIPT="$(find /tmp -maxdepth 3 -name 'rag-apply-nginx.sh' | head -1)"
+            test -n "$CONF" && test -f "$CONF"
+            test -n "$SCRIPT" && test -f "$SCRIPT"
+            bash "$SCRIPT" "$CONF"
 
   # ───────────────────────────────────────────────────────────────
   # Backend: build image, push to GHCR, pull & run on EC2 behind nginx

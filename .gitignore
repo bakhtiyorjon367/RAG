@@ -17,6 +17,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# CI staging (generated in deploy workflow)
+.deploy-staging/
+
 # Node / frontend build
 frontend/node_modules/
 frontend/dist/
