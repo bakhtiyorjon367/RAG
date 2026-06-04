@@ -17,9 +17,11 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 ENV FASTEMBED_CACHE_PATH=/app/.fastembed_cache
 ENV EMBEDDING_MODEL=intfloat/multilingual-e5-base
+ENV RERANK_MODEL=ms-marco-MultiBERT-L-12
+ENV RERANK_CACHE_PATH=/app/.flashrank_cache
 
-# Bake embedding weights into the image so EC2 does not download at startup.
-RUN mkdir -p /app/.fastembed_cache && python scripts/bake_embedding_model.py
+# Bake embedding + reranker weights into the image so EC2 does not download at startup.
+RUN mkdir -p /app/.fastembed_cache /app/.flashrank_cache && python scripts/bake_embedding_model.py
 
 EXPOSE 8000
 

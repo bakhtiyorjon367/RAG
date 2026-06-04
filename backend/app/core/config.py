@@ -30,8 +30,12 @@ class Settings(BaseSettings):
     INGEST_BATCH_SIZE: int = 16
     EMBED_PARALLEL: int = 1
 
-    # Reranking (FlashRank: jina-reranker-v2-base-multilingual for KO/EN)
-    RERANK_MODEL: str = "jinaai/jina-reranker-v2-base-multilingual"
+    # Reranking (FlashRank). Must be a name from FlashRank's model zoo, e.g.
+    # ms-marco-MultiBERT-L-12 (multilingual, KO/EN), ms-marco-MiniLM-L-12-v2
+    # (English), ms-marco-TinyBERT-L-2-v2 (tiny/fast), or "none" to disable.
+    RERANK_MODEL: str = "ms-marco-MultiBERT-L-12"
+    # Persisted cache dir for the reranker so it isn't re-downloaded each restart.
+    RERANK_CACHE_PATH: str = "/app/.flashrank_cache"
 
     # Search
     TOP_K: int = 5

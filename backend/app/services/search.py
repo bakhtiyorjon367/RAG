@@ -41,10 +41,14 @@ class SearchService:
             logger.info("Loading FlashRank reranker: %s", settings.RERANK_MODEL)
             from flashrank import Ranker
 
-            self._reranker = Ranker(
-                model_name=settings.RERANK_MODEL,
-                max_length=512,
-            )
+            ranker_kwargs: dict[str, Any] = {
+                "model_name": settings.RERANK_MODEL,
+                "max_length": 512,
+            }
+            if settings.RERANK_CACHE_PATH:
+                ranker_kwargs["cache_dir"] = settings.RERANK_CACHE_PATH
+
+            self._reranker = Ranker(**ranker_kwargs)
             logger.info("FlashRank reranker loaded")
         except ImportError:
             logger.warning(

@@ -94,11 +94,18 @@ api.interceptors.response.use(
 
 // ─── Documents ───────────────────────────────────────────────
 
+/**
+ * Upload a document. The backend stores the file + creates the record, then
+ * runs extraction/embedding in a background task and returns immediately with
+ * status="processing". This timeout therefore only covers the network upload,
+ * not the (potentially long) processing — which the UI tracks via realtime.
+ */
 export async function uploadDocument(file: File) {
   const formData = new FormData()
   formData.append("file", file)
   return api.post("/documents/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120_000,
   })
 }
 

@@ -56,6 +56,10 @@ const ACCEPTED_TYPES = [
 
 const ACCEPT_STRING = ".pdf,.docx,.html,.md,.markdown,.txt"
 
+// Client-side guard. Keep in sync with the backend MAX_UPLOAD_SIZE_MB setting.
+const MAX_FILE_SIZE_MB = 50
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
 function getMimeIcon(mimeType: string) {
   if (mimeType.includes("pdf")) return <FileText className="h-4 w-4 text-red-500" />
   if (mimeType.includes("word") || mimeType.includes("docx"))
@@ -205,15 +209,17 @@ export default function Ingest() {
           )
           continue
         }
-        if (file.size > 50 * 1024 * 1024) {
-          setUploadError(`File too large: ${file.name}. Max size is 50 MB.`)
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+          setUploadError(`File too large: ${file.name}. Max size is ${MAX_FILE_SIZE_MB} MB.`)
           continue
         }
         await uploadDocument(file)
       }
       await fetchDocuments()
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
+      if (err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "ECONNABORTED") {
+        setUploadError("Upload timed out. The file may be too large or the connection too slow. Please try again.")
+      } else if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { status: number; data?: { detail?: string | { message?: string } } } }
         if (axiosErr.response?.status === 409) {
           const detail = axiosErr.response.data?.detail
