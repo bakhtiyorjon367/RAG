@@ -10,7 +10,8 @@ from app.core.auth import get_current_user
 from app.models.chunk import SearchRequest, SearchFilters
 from app.services.embedding import EmbeddingService
 from app.services.search import SearchService
-from app.services.llm import LLMService
+from app.services.gemini_errors import classify_gemini_error
+from app.services.llm import GeminiGenerationError, LLMService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -91,9 +92,12 @@ async def chat(
             llm = LLMService()
             async for token in llm.generate_stream(query, chunks_for_llm):
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+        except GeminiGenerationError as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': e.message, 'code': e.code})}\n\n"
         except Exception as e:
             logger.exception("LLM generation failed")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            err = classify_gemini_error(e)
+            yield f"data: {json.dumps({'type': 'error', 'message': err['message'], 'code': err['code']})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

@@ -158,7 +158,7 @@ export interface ChatParams {
 export type ChatSSEEvent =
   | { type: "sources"; results: SearchResult[] }
   | { type: "token"; content: string }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; code?: string }
   | { type: "done" }
 
 interface SearchResult {

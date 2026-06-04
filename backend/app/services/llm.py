@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 
 from app.core.config import settings
+from app.services.gemini_errors import classify_gemini_error
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,13 @@ class LLMService:
                 "GEMINI_API_KEY is not set. "
                 "Get a free key at https://aistudio.google.com/"
             )
-        self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        # Fail fast on 429 — SDK default retries ~5× (~30s) before surfacing quota errors.
+        self._client = genai.Client(
+            api_key=settings.GEMINI_API_KEY,
+            http_options=types.HttpOptions(
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
+        )
         self._model = settings.GEMINI_MODEL
 
     # ── Streaming response ────────────────────────────────────
@@ -81,15 +88,29 @@ class LLMService:
         """Stream the LLM response token-by-token (SSE-friendly)."""
         user_message = _build_user_message(question, chunks)
 
-        stream = await self._client.aio.models.generate_content_stream(
-            model=self._model,
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=RAG_SYSTEM_PROMPT,
-                temperature=0.3,
-                max_output_tokens=2048,
-            ),
-        )
-        async for chunk in stream:
-            if chunk.text:
-                yield chunk.text
+        try:
+            stream = await self._client.aio.models.generate_content_stream(
+                model=self._model,
+                contents=user_message,
+                config=types.GenerateContentConfig(
+                    system_instruction=RAG_SYSTEM_PROMPT,
+                    temperature=0.3,
+                    max_output_tokens=2048,
+                ),
+            )
+            async for chunk in stream:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as exc:
+            err = classify_gemini_error(exc)
+            logger.warning("Gemini generation failed [%s]: %s", err["code"], exc)
+            raise GeminiGenerationError(err["message"], err["code"]) from exc
+
+
+class GeminiGenerationError(Exception):
+    """Raised when Gemini fails with a classified, user-safe message."""
+
+    def __init__(self, message: str, code: str) -> None:
+        self.message = message
+        self.code = code
+        super().__init__(message)

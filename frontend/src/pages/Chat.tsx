@@ -7,12 +7,14 @@ import {
   SearchCheck,
   Bot,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   listDocuments,
   chatStream,
@@ -43,6 +45,7 @@ export default function Chat() {
   const [generating, setGenerating] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const answerRef = useRef<HTMLDivElement>(null)
 
@@ -73,6 +76,7 @@ export default function Chat() {
     setResults([])
     setAnswer("")
     setError(null)
+    setErrorCode(null)
     try {
       const filters: SearchFilters = {}
       if (selectedDocIds.length > 0) filters.document_ids = selectedDocIds
@@ -96,6 +100,7 @@ export default function Chat() {
               break
             case "error":
               setError(event.message)
+              setErrorCode(event.code ?? null)
               setGenerating(false)
               break
             case "done":
@@ -143,6 +148,9 @@ export default function Chat() {
 
   const hasActiveFilters =
     selectedDocIds.length > 0 || selectedMimeTypes.length > 0
+
+  const isGeminiQuotaError =
+    errorCode === "gemini_quota_exceeded" || errorCode === "gemini_rate_limited"
 
   return (
     <div className="w-full space-y-6">
@@ -276,6 +284,27 @@ export default function Chat() {
         </div>
       )}
 
+      {/* Error — shown before answer so quota failures are visible */}
+      {error && isGeminiQuotaError && (
+        <Alert className="border-amber-500/50 bg-amber-500/5">
+          <AlertTriangle className="text-amber-600 dark:text-amber-500" />
+          <AlertTitle>
+            {errorCode === "gemini_quota_exceeded"
+              ? "Gemini free tier is over"
+              : "Gemini rate limit reached"}
+          </AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {error && !isGeminiQuotaError && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="pt-6">
+            <p className="text-sm text-destructive">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* AI Answer */}
       {(answer || generating) && (
         <div className="flex gap-3">
@@ -298,15 +327,6 @@ export default function Chat() {
             )}
           </div>
         </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <Card className="border-destructive/50 bg-destructive/5">
-          <CardContent className="pt-6">
-            <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
       )}
 
       {/* No results */}
