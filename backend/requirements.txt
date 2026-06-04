@@ -13,6 +13,7 @@ python-jose[cryptography]==3.3.0
 
 # Document extraction (lightweight, no torch)
 pymupdf>=1.26.0
+pymupdf4llm>=0.0.17
 python-docx>=1.2.0
 beautifulsoup4>=4.14.0
 lxml>=6.0.0
