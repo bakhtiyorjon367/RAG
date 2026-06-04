@@ -25,8 +25,12 @@ class Settings(BaseSettings):
     # Ingestion (memory-bounded processing for low-RAM instances)
     # Embed + insert chunks in small batches so peak memory stays flat
     # regardless of document size. INGEST_BATCH_SIZE = chunks per batch.
-    # EMBED_PARALLEL = fastembed worker processes (1 = in-process, safest on
-    # low-memory hosts; >1 spawns subprocesses that can be OOM-killed).
+    # EMBED_PARALLEL = fastembed worker processes. <=1 runs fully in-process
+    # (safest on low-memory/containerized hosts; fastembed only avoids its
+    # multiprocessing worker pool when parallel is None). >1 spawns that many
+    # subprocesses, which can be OOM-killed or fail to spawn in constrained
+    # containers, so keep it at 1 unless you have headroom.
+
     INGEST_BATCH_SIZE: int = 16
     EMBED_PARALLEL: int = 1
 

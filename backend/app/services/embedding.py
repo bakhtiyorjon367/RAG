@@ -71,11 +71,19 @@ class EmbeddingService:
             self.load_model()
 
         prefixed = self._prefix_for_model(texts, "passage:")
+        # fastembed only runs fully in-process when parallel is None. Any int
+        # value (including 1) routes through its multiprocessing worker pool,
+        # which spawns a forkserver/spawn subprocess. That subprocess spawn
+        # fails inside constrained containers (limited /dev/shm, restrictive
+        # seccomp) with "RuntimeError: did not receive acknowledgement of fd",
+        # crashing ingestion. Map EMBED_PARALLEL<=1 to None so the default
+        # stays single-process; only opt into multiprocessing when >1.
+        parallel = settings.EMBED_PARALLEL if settings.EMBED_PARALLEL > 1 else None
         embeddings = list(
             self._model.embed(
                 prefixed,
                 batch_size=len(prefixed),
-                parallel=settings.EMBED_PARALLEL,
+                parallel=parallel,
             )
         )
         return [emb.tolist() for emb in embeddings]

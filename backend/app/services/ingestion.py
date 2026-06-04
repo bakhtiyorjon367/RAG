@@ -6,6 +6,7 @@ import hashlib
 import logging
 from typing import Any
 
+from app.core.config import settings
 from app.core.supabase_client import get_supabase_client
 from app.services.chunking import ChunkingService
 from app.services.embedding import EmbeddingService

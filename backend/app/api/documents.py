@@ -8,7 +8,6 @@ from functools import partial
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     HTTPException,
     Request,
@@ -47,23 +46,22 @@ def _get_ingestion_service(request: Request) -> IngestionService:
 async def upload_document(
     file: UploadFile,
     request: Request,
-    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user),
 ):
-    """Upload a file and trigger the ingestion pipeline.
+    """Upload a file and run the ingestion pipeline synchronously.
 
     1. Validate file size and type
     2. Compute content hash (dedup check)
     3. Upload to Supabase Storage
     4. Create document record
-    5. Schedule the ingestion pipeline as a background task
+    5. Run the extract→chunk→embed→store pipeline and wait for it to finish
 
-    All blocking calls (Supabase I/O, extraction, embedding) are kept off the
-    async event loop: pre-steps run in a threadpool via ``run_in_executor`` and
-    the heavy extract→chunk→embed pipeline runs as a background task so the
-    request returns immediately. The document row is created with
-    ``status=processing`` and flips to ``ready``/``error`` once the background
-    task completes (the frontend listens via Supabase realtime).
+    All blocking calls (Supabase I/O, extraction, embedding) run off the async
+    event loop via ``run_in_executor``, but the request only returns once
+    processing has completed and the document row has been flipped to
+    ``ready``/``error``. This keeps the UI in sync without relying on realtime
+    updates. Trade-off: the request stays open for the full processing time, so
+    very large documents can hit the client upload timeout.
     """
     ingestion = _get_ingestion_service(request)
 
@@ -125,15 +123,18 @@ async def upload_document(
         ),
     )
 
-    # Schedule the heavy pipeline as a background task. FastAPI runs sync
-    # background functions in a threadpool, so it never blocks the event loop
-    # and the response returns immediately.
-    background_tasks.add_task(
-        ingestion.process_document,
-        document_id=doc["id"],
-        file_bytes=file_bytes,
-        mime_type=mime_type,
-        filename=filename,
+    # Run the heavy pipeline synchronously, off the event loop. The request
+    # waits for extract→chunk→embed→store to finish so the document row is
+    # already ``ready``/``error`` by the time the client refetches.
+    await loop.run_in_executor(
+        None,
+        partial(
+            ingestion.process_document,
+            document_id=doc["id"],
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            filename=filename,
+        ),
     )
 
     return DocumentUploadResponse(
