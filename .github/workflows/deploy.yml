@@ -62,7 +62,10 @@ jobs:
           source: "frontend/dist/*"
           target: ${{ env.FRONTEND_DIR }}
           strip_components: 2
-          rm: true
+          # No rm: deleting/recreating the dir needs write on the parent
+          # (/var/www, root-owned). Overwrite files in place instead; build
+          # assets are content-hashed so stale files are harmless.
+          overwrite: true
 
   # ───────────────────────────────────────────────────────────────
   # Backend: build image, push to ECR, pull & run on EC2 behind nginx
