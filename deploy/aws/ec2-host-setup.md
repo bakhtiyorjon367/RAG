@@ -54,15 +54,38 @@ sudo rm -f /etc/nginx/conf.d/default.conf
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 6. ECR repository
+## 6. ECR repository (AWS — not a folder on the server)
 
-Create once (from anywhere with AWS CLI configured):
+The backend image is pushed to **AWS ECR** repository `rag-backend`. This is
+**not** the same as a directory on EC2.
+
+**Option A — let GitHub Actions create it** (recommended): the workflow runs
+`aws ecr create-repository` before the first push.
+
+**Option B — create manually** from a machine with admin AWS credentials:
+
+```bash
+bash deploy/server/create-ecr-repo.sh "$AWS_REGION"
+```
+
+Or:
 
 ```bash
 aws ecr create-repository --repository-name rag-backend --region "$AWS_REGION"
 ```
 
-## 7. GitHub repository secrets
+## 7. Optional: clone repo to `~/RAG` on the server
+
+For nginx config and helper scripts on the host:
+
+```bash
+git clone https://github.com/bakhtiyorjon367/RAG.git ~/RAG
+bash ~/RAG/deploy/server/setup-host.sh
+```
+
+See [deploy/server/README.md](../server/README.md).
+
+## 8. GitHub repository secrets
 
 Required by [deploy.yml](../../.github/workflows/deploy.yml):
 
