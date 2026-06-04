@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { FileText, Search, MessageSquare, LogOut } from "lucide-react"
+import { FileText, Search, MessageSquare, LogOut, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
@@ -8,6 +8,7 @@ const navItems = [
   { to: "/ingest", label: "Documents", icon: FileText },
   { to: "/search", label: "Search", icon: Search },
   { to: "/chat", label: "Chat", icon: MessageSquare },
+  { to: "/about", label: "About", icon: Info },
 ]
 
 const shellClass = "w-full px-4 sm:px-6 lg:px-8 xl:px-10"

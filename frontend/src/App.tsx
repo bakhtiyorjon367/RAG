@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/layout/AppLayout"
 import { Toaster } from "@/components/ui/sonner"
 import Login from "@/pages/Login"
 import Signup from "@/pages/Signup"
+import About from "@/pages/About"
 import Ingest from "@/pages/Ingest"
 import Chat from "@/pages/Chat"
 import Search from "@/pages/Search"
@@ -19,6 +20,7 @@ export default function App() {
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/about" element={<About />} />
 
             {/* Protected routes */}
             <Route
