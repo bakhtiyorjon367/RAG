@@ -49,12 +49,12 @@ Or run `bash ~/RAG/deploy/server/setup-host.sh`.
 
 ## 5. GitHub repository secrets
 
-| Secret | Notes |
-|--------|-------|
-| `EC2_HOST` / `EC2_USER` / `EC2_SSH_KEY` | SSH/scp target |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` | backend + frontend build |
-| `GEMINI_API_KEY` | backend `/chat` |
-| `GHCR_PAT` | Personal access token with **`read:packages`** — EC2 pulls from GHCR |
+| Secret                                                        | Notes                                                                |
+| ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `EC2_HOST` / `EC2_USER` / `EC2_SSH_KEY`                       | SSH/scp target                                                       |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` | backend + frontend build                                             |
+| `GEMINI_API_KEY`                                              | backend `/chat`                                                      |
+| `GHCR_PAT`                                                    | Personal access token with **`read:packages`** — EC2 pulls from GHCR |
 
 Push to GHCR uses the built-in **`GITHUB_TOKEN`** (no extra secret).
 
@@ -79,8 +79,50 @@ for this deploy path.
   In AWS Console: EC2 → Volumes → modify root volume to **30 GB**, then on the
   instance: `sudo growpart /dev/nvme0n1 1 && sudo resize2fs /dev/nvme0n1p1`
   (device name may differ — check `lsblk`).
+
 - Frontend is built with `VITE_API_URL=""` so it calls relative `/api/v1/...`,
   which nginx proxies to the backend.
 - HTTP only for now. Add HTTPS later with certbot or an ALB.
+
+## Troubleshooting: nginx `403 Forbidden` on `/`
+
+`curl -I http://127.0.0.1/` returning **403** almost always means the **default**
+nginx site is still the `default_server`, not `rag.conf`, and/or the frontend
+directory is empty.
+
+On the EC2 host:
+
+```bash
+# 1) Frontend files present?
+ls -la /var/www/rag-frontend/index.html /var/www/rag-frontend/assets/
+
+# 2) Which server block answers port 80?
+sudo nginx -T 2>/dev/null | grep -E "listen 80|root |server_name"
+
+# 3) Install RAG site and disable Ubuntu default
+sudo cp ~/RAG/deploy/nginx/rag.conf /etc/nginx/conf.d/rag.conf
+sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
+sudo nginx -t && sudo systemctl reload nginx
+
+# 4) Should be 200 and proxy API
+curl -I http://127.0.0.1/
+curl -fsS http://127.0.0.1:8000/health
+curl -I http://127.0.0.1/api/v1/documents  # 401 without JWT is OK; confirms nginx → backend
+```
+
+Re-run the GitHub **Deploy** workflow if `index.html` is missing (frontend job
+copies `frontend/dist/` to `/var/www/rag-frontend`).
+
+## Troubleshooting: two different IPs / cross-origin frame errors
+
+Use **one** URL for everything (e.g. `http://<EC2_PUBLIC_IP>/` only). Do not mix
+an old IP, CloudFront URL, and EC2 in the same session.
+
+In **Supabase → Authentication → URL configuration**, set **Site URL** and
+**Redirect URLs** to the same origin you open in the browser, e.g.
+`http://34.238.102.186` and `http://34.238.102.186/**`.
+
+After changing frontend API behavior, redeploy so the build uses empty
+`VITE_API_URL` (relative `/api/v1/...` via nginx).
 
 See also [deploy/server/README.md](../server/README.md).

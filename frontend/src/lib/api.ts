@@ -3,10 +3,19 @@ import { getAccessToken, setAccessToken } from "./auth-token"
 import { isAbortError } from "./errors"
 import { supabase } from "./supabase"
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
+/** Same-origin on EC2 nginx when VITE_API_URL is unset or empty at build time. */
+function apiBasePath(): string {
+  const raw = import.meta.env.VITE_API_URL
+  if (raw === undefined || raw === "") {
+    return "/api/v1"
+  }
+  return `${String(raw).replace(/\/$/, "")}/api/v1`
+}
+
+const API_BASE = apiBasePath()
 
 const api = axios.create({
-  baseURL: `${API_URL}/api/v1`,
+  baseURL: API_BASE,
   headers: {
     "Content-Type": "application/json",
   },
@@ -183,7 +192,7 @@ export async function chatStream(
 
   const authToken = getAccessToken()
 
-  const response = await fetch(`${API_URL}/api/v1/chat`, {
+  const response = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
