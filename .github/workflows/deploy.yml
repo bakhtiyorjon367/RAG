@@ -1,6 +1,7 @@
 name: Deploy to EC2 (backend container + frontend via host nginx)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
