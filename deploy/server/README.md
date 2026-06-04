@@ -1,22 +1,17 @@
 # EC2 server layout (`~/RAG`)
 
-Use this folder on the EC2 host for **config and scripts**. It is **not** where
-Docker images are stored.
+Use this folder on the EC2 host for **config and scripts**. Docker images are
+stored in **GitHub Container Registry (GHCR)**, not on disk under `~/RAG`.
 
-## Important: two different "rag-backend" names
+## Image location
 
 | Name | What it is | Where |
 |------|------------|--------|
-| **`rag-backend` (ECR repo)** | AWS container registry for Docker images | AWS ECR (cloud). Created automatically by CI or via `create-ecr-repo.sh`. |
-| **`rag-backend` (container)** | Running FastAPI process | `docker ps` on EC2, listens on `127.0.0.1:8000`. |
-| **`~/RAG`** | Optional checkout of this repo on the server | Your home directory — nginx config, setup scripts. |
-
-Creating `~/RAG/rag-backend/` as a **folder on disk does not fix** the ECR
-error. The registry repo must exist in **AWS ECR**.
+| **`ghcr.io/bakhtiyorjon367/rag-backend`** | Backend Docker image | GitHub Container Registry (created on first CI push) |
+| **`rag-backend` (container)** | Running FastAPI process | `docker ps` on EC2, listens on `127.0.0.1:8000` |
+| **`~/RAG`** | Optional repo clone on the server | nginx config, setup scripts |
 
 ## Recommended layout on EC2
-
-After cloning the repo to `~/RAG`:
 
 ```
 ~/RAG/
@@ -24,7 +19,6 @@ After cloning the repo to `~/RAG`:
     nginx/rag.conf      # copy to /etc/nginx/conf.d/
     server/
       setup-host.sh     # one-time host setup
-      create-ecr-repo.sh
   ...
 /var/www/rag-frontend/  # static UI (filled by GitHub Actions scp)
 ```
@@ -33,19 +27,23 @@ After cloning the repo to `~/RAG`:
 
 ```bash
 git clone https://github.com/bakhtiyorjon367/RAG.git ~/RAG
-cd ~/RAG
-bash deploy/server/setup-host.sh
+bash ~/RAG/deploy/server/setup-host.sh
 ```
 
-Then in the **AWS Console** (admin user, not the EC2 instance role):
+## GitHub secrets for GHCR pull on EC2
 
-- IAM → Users → `githubActions` → attach `AmazonEC2ContainerRegistryPowerUser`
-- IAM → Roles → `instanceRole` → attach `AmazonEC2ContainerRegistryReadOnly`
+CI pushes with `GITHUB_TOKEN` (automatic). The EC2 host must **pull** the
+image, so add a Personal Access Token:
 
-Create the ECR repo once (or let the next GitHub Actions run create it):
+1. GitHub → Settings → Developer settings → Personal access tokens
+2. Create a token with **`read:packages`** scope
+3. Add it as repository secret **`GHCR_PAT`**
 
-```bash
-bash ~/RAG/deploy/server/create-ecr-repo.sh us-east-1
-```
+If the package is **public** (Package settings → Change visibility), you can
+skip `GHCR_PAT` and remove the `docker login` line from the workflow — but
+private is recommended.
 
-Replace `us-east-1` with your `AWS_REGION` secret value.
+## No AWS ECR required
+
+This project no longer uses AWS ECR. You do **not** need `AWS_ACCOUNT_ID`,
+`AWS_ACCESS_KEY_ID`, or ECR IAM policies for deploy.

@@ -38,7 +38,6 @@ sudo systemctl enable docker 2>/dev/null || true
 
 echo ""
 echo "Done. Next steps:"
-echo "  1. Attach AmazonEC2ContainerRegistryReadOnly to the EC2 instance role."
-echo "  2. Create ECR repo rag-backend (or push from GitHub Actions — CI creates it)."
-echo "  3. Re-run the Deploy workflow on GitHub."
-echo "  4. Open http://<EC2_PUBLIC_IP>/ in a browser."
+echo "  1. Add GitHub secret GHCR_PAT (PAT with read:packages) for docker pull."
+echo "  2. Re-run the Deploy workflow on GitHub."
+echo "  3. Open http://<EC2_PUBLIC_IP>/ in a browser."
