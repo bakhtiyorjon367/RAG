@@ -14,12 +14,21 @@
 set -euo pipefail
 
 RAG_CONF_SRC="${1:-/tmp/rag.conf}"
-COEXIST="${RAG_NGINX_COEXIST:-0}"
+COEXIST="${RAG_NGINX_COEXIST:-}"
 SMOKE_PORT="${RAG_SMOKE_PORT:-}"
 
 if [ ! -f "$RAG_CONF_SRC" ]; then
   echo "ERROR: nginx config not found: $RAG_CONF_SRC"
   exit 1
+fi
+
+# Port 8080 configs imply shared host — never disable other sites unless COEXIST=0.
+if [ -z "$COEXIST" ]; then
+  if grep -qE 'listen\s+8080' "$RAG_CONF_SRC" 2>/dev/null; then
+    COEXIST=1
+  else
+    COEXIST=0
+  fi
 fi
 
 if [ -z "$SMOKE_PORT" ]; then

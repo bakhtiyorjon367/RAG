@@ -73,21 +73,24 @@ jobs:
           strip_components: 2
           overwrite: true
 
-      - name: Select nginx config for port ${{ env.RAG_NGINX_PORT }}
+      # Flat /tmp names — appleboy scp preserves deploy/... paths otherwise.
+      - name: Stage nginx files for upload
         run: |
           if [ "${{ env.RAG_NGINX_PORT }}" = "8080" ]; then
-            cp deploy/nginx/rag-port8080.conf deploy/nginx/rag.deploy.conf
+            cp deploy/nginx/rag-port8080.conf /tmp/rag-nginx.conf
           else
-            cp deploy/nginx/rag.conf deploy/nginx/rag.deploy.conf
+            cp deploy/nginx/rag.conf /tmp/rag-nginx.conf
           fi
+          cp deploy/server/apply-nginx.sh /tmp/rag-apply-nginx.sh
+          chmod +x /tmp/rag-apply-nginx.sh
 
-      - name: Copy nginx config to EC2 host
+      - name: Copy nginx files to EC2 host
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "deploy/nginx/rag.deploy.conf,deploy/server/apply-nginx.sh"
+          source: "/tmp/rag-nginx.conf,/tmp/rag-apply-nginx.sh"
           target: "/tmp"
           overwrite: true
 
@@ -102,8 +105,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: RAG_NGINX_COEXIST,RAG_SMOKE_PORT
           script: |
-            chmod +x /tmp/apply-nginx.sh
-            bash /tmp/apply-nginx.sh /tmp/rag.deploy.conf
+            bash /tmp/rag-apply-nginx.sh /tmp/rag-nginx.conf
 
   # ───────────────────────────────────────────────────────────────
   # Backend: build image, push to GHCR, pull & run on EC2 behind nginx
@@ -151,11 +153,12 @@ jobs:
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GHCR_USER: ${{ github.repository_owner }}
+          RAG_NGINX_PORT: ${{ env.RAG_NGINX_PORT }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE_NAME,GHCR_PAT,GHCR_USER
+          envs: IMAGE_NAME,GHCR_PAT,GHCR_USER,RAG_NGINX_PORT
           script: |
             set -e
 
@@ -169,18 +172,25 @@ jobs:
 
             docker stop rag-backend 2>/dev/null || true
             docker rm rag-backend 2>/dev/null || true
-            # Drop stale partial model downloads; weights are baked into the image now.
             docker volume rm fastembed_cache 2>/dev/null || true
-            docker system prune -af
+            # Do not run "docker system prune -af" on a shared host (other apps use Docker).
+            docker image prune -f || true
 
             echo "Disk before pull:"
             df -h / | tail -1
             AVAIL_KB=$(df / | awk 'NR==2 {print $4}')
             if [ "$AVAIL_KB" -lt 3145728 ]; then
-              echo "WARNING: less than 3 GB free on /. Run docker system prune -af or expand EBS (see deploy/aws/ec2-host-setup.md)."
+              echo "WARNING: less than 3 GB free on /. Run docker image prune -f or expand EBS (see deploy/aws/ec2-host-setup.md)."
             fi
 
             docker pull "$IMAGE_NAME:latest"
+
+            RAG_PORT="${RAG_NGINX_PORT:-8080}"
+            if [ "$RAG_PORT" = "80" ]; then
+              CORS_ORIGIN="http://${{ secrets.EC2_HOST }}"
+            else
+              CORS_ORIGIN="http://${{ secrets.EC2_HOST }}:${RAG_PORT}"
+            fi
 
             # Bind to localhost only; host nginx proxies /api -> 127.0.0.1:8000
             docker run -d \
@@ -192,7 +202,7 @@ jobs:
               -e SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
               -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
               -e FASTEMBED_CACHE_PATH=/app/.fastembed_cache \
-              -e 'CORS_ORIGINS=["http://${{ secrets.EC2_HOST }}${{ env.RAG_NGINX_PORT != '80' && format(':{}', env.RAG_NGINX_PORT) || '' }}"]' \
+              -e "CORS_ORIGINS=[\"${CORS_ORIGIN}\"]" \
               "$IMAGE_NAME:latest"
 
             echo "Waiting for backend health (model load into RAM may take a few minutes on first deploy)..."

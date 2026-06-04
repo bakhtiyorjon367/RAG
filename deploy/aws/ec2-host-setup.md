@@ -167,4 +167,27 @@ In **Supabase → Authentication → URL configuration**, set **Site URL** and
 After changing frontend API behavior, redeploy so the build uses empty
 `VITE_API_URL` (relative `/api/v1/...` via nginx).
 
+## Recovery: other sites disappeared after a bad deploy
+
+If `apply-nginx.sh` ran in **dedicated** mode (`RAG_NGINX_COEXIST=0`), it renames
+files under `/etc/nginx/sites-enabled/` to `*.disabled.*`. Restore them:
+
+```bash
+ls -la /etc/nginx/sites-enabled/
+# Example: re-enable a site that was disabled
+sudo mv /etc/nginx/sites-enabled/kft.conf.disabled.1234567890 /etc/nginx/sites-enabled/kft.conf
+# Or list all disabled and move back:
+sudo find /etc/nginx/sites-enabled -name '*.disabled*' -print
+
+sudo nginx -t && sudo systemctl reload nginx
+curl -I http://127.0.0.1/    # your main app on :80
+curl -I http://127.0.0.1:8080/   # RAG
+```
+
+Re-apply RAG on 8080 without touching other sites:
+
+```bash
+RAG_NGINX_COEXIST=1 bash /path/to/apply-nginx.sh /path/to/rag-port8080.conf
+```
+
 See also [deploy/server/README.md](../server/README.md).
