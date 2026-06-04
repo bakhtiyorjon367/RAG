@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from functools import partial
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 
 from app.core.auth import get_current_user
 from app.core.config import settings
@@ -37,6 +47,7 @@ def _get_ingestion_service(request: Request) -> IngestionService:
 async def upload_document(
     file: UploadFile,
     request: Request,
+    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user),
 ):
     """Upload a file and trigger the ingestion pipeline.
@@ -45,7 +56,14 @@ async def upload_document(
     2. Compute content hash (dedup check)
     3. Upload to Supabase Storage
     4. Create document record
-    5. Run ingestion pipeline (synchronous for MVP)
+    5. Schedule the ingestion pipeline as a background task
+
+    All blocking calls (Supabase I/O, extraction, embedding) are kept off the
+    async event loop: pre-steps run in a threadpool via ``run_in_executor`` and
+    the heavy extract→chunk→embed pipeline runs as a background task so the
+    request returns immediately. The document row is created with
+    ``status=processing`` and flips to ``ready``/``error`` once the background
+    task completes (the frontend listens via Supabase realtime).
     """
     ingestion = _get_ingestion_service(request)
 
@@ -67,11 +85,17 @@ async def upload_document(
             detail=f"File too large. Maximum size is {settings.MAX_UPLOAD_SIZE_MB} MB.",
         )
 
-    # Compute content hash for dedup
+    loop = asyncio.get_event_loop()
+    filename = file.filename or "unnamed"
+    mime_type = file.content_type or "application/octet-stream"
+
+    # Compute content hash for dedup (fast, CPU-only)
     content_hash = ingestion.compute_content_hash(file_bytes)
 
-    # Check for duplicate
-    existing = ingestion.check_duplicate(user_id, content_hash)
+    # Check for duplicate (blocking Supabase I/O → run off the event loop)
+    existing = await loop.run_in_executor(
+        None, partial(ingestion.check_duplicate, user_id, content_hash)
+    )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -82,26 +106,33 @@ async def upload_document(
             },
         )
 
-    # Upload raw file to storage
-    filename = file.filename or "unnamed"
-    storage_path = ingestion.upload_to_storage(
-        user_id, filename, file_bytes, file.content_type or "application/octet-stream"
+    # Upload raw file to storage (blocking I/O → run off the event loop)
+    storage_path = await loop.run_in_executor(
+        None,
+        partial(ingestion.upload_to_storage, user_id, filename, file_bytes, mime_type),
     )
 
-    # Create document record
-    doc = ingestion.create_document_record(
-        user_id=user_id,
-        filename=filename,
-        storage_path=storage_path,
-        mime_type=file.content_type or "application/octet-stream",
-        content_hash=content_hash,
+    # Create document record (blocking I/O → run off the event loop)
+    doc = await loop.run_in_executor(
+        None,
+        partial(
+            ingestion.create_document_record,
+            user_id=user_id,
+            filename=filename,
+            storage_path=storage_path,
+            mime_type=mime_type,
+            content_hash=content_hash,
+        ),
     )
 
-    # Run ingestion pipeline (synchronous for MVP)
-    ingestion.process_document(
+    # Schedule the heavy pipeline as a background task. FastAPI runs sync
+    # background functions in a threadpool, so it never blocks the event loop
+    # and the response returns immediately.
+    background_tasks.add_task(
+        ingestion.process_document,
         document_id=doc["id"],
         file_bytes=file_bytes,
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=mime_type,
         filename=filename,
     )
 

@@ -178,4 +178,3 @@ class IngestionService:
                     "metadata": {"error": str(exc)},
                 }
             ).eq("id", document_id).execute()
-            raise
