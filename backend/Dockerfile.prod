@@ -17,10 +17,13 @@ ENV PYTHONUNBUFFERED=1
 ENV FASTEMBED_CACHE_PATH=/app/.fastembed_cache
 ENV EMBEDDING_MODEL=intfloat/multilingual-e5-base
 
-# Bake embedding weights into the image so EC2 does not download ~1 GB at startup.
+# Bake embedding weights into the image so EC2 does not download at startup.
+# e5-base is registered via add_custom_model (not in fastembed's built-in list).
 RUN mkdir -p /app/.fastembed_cache && python -c "\
-import os; \
+from app.services.embedding_models import register_custom_embedding_models; \
 from fastembed import TextEmbedding; \
+import os; \
+register_custom_embedding_models(); \
 TextEmbedding(model_name=os.environ['EMBEDDING_MODEL'])"
 
 EXPOSE 8000

@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 from app.core.config import settings
+from app.services.embedding_models import register_custom_embedding_models
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class EmbeddingService:
             os.environ["FASTEMBED_CACHE_PATH"] = settings.FASTEMBED_CACHE_PATH
 
         logger.info("Loading local embedding model: %s", self._model_name)
+        register_custom_embedding_models()
         from fastembed import TextEmbedding
 
         self._model = TextEmbedding(model_name=self._model_name)
