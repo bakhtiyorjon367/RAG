@@ -130,28 +130,49 @@ class IngestionService:
                 ).eq("id", document_id).execute()
                 return
 
-            # Step 3: Embed
-            logger.info("Embedding %d chunks for document %s", len(chunks), document_id)
-            texts = [chunk.content for chunk in chunks]
-            embeddings = self._embedding.embed_texts(texts)
+            # Steps 3 & 4: Embed + store in small batches. Processing the whole
+            # document at once can exhaust RAM on small instances (the embeddings
+            # list alone can be hundreds of MB), so we bound peak memory by
+            # embedding and inserting one batch at a time and freeing it after.
+            batch_size = max(1, settings.INGEST_BATCH_SIZE)
+            total_chunks = len(chunks)
+            logger.info(
+                "Embedding + storing %d chunks for document %s (batch_size=%d)",
+                total_chunks,
+                document_id,
+                batch_size,
+            )
 
-            # Step 4: Store chunks
-            logger.info("Storing %d chunks for document %s", len(chunks), document_id)
-            chunk_records = []
-            for chunk, embedding in zip(chunks, embeddings):
-                normalized = normalize_for_fts(chunk.content)
-                chunk_records.append({
-                    "document_id": document_id,
-                    "chunk_index": chunk.chunk_index,
-                    "content": chunk.content,
-                    "content_normalized": normalized if (normalized and normalized.strip()) else None,
-                    "embedding": embedding,
-                    "token_count": chunk.token_count,
-                    "metadata": chunk.metadata,
-                })
+            stored = 0
+            for start in range(0, total_chunks, batch_size):
+                batch = chunks[start : start + batch_size]
+                texts = [chunk.content for chunk in batch]
+                embeddings = self._embedding.embed_texts(texts)
 
-            # Bulk insert chunks
-            self._supabase.table("chunks").insert(chunk_records).execute()
+                chunk_records = []
+                for chunk, embedding in zip(batch, embeddings):
+                    normalized = normalize_for_fts(chunk.content)
+                    chunk_records.append({
+                        "document_id": document_id,
+                        "chunk_index": chunk.chunk_index,
+                        "content": chunk.content,
+                        "content_normalized": normalized if (normalized and normalized.strip()) else None,
+                        "embedding": embedding,
+                        "token_count": chunk.token_count,
+                        "metadata": chunk.metadata,
+                    })
+
+                self._supabase.table("chunks").insert(chunk_records).execute()
+                stored += len(chunk_records)
+                logger.info(
+                    "Stored %d/%d chunks for document %s",
+                    stored,
+                    total_chunks,
+                    document_id,
+                )
+
+                # Release batch memory before the next iteration.
+                del texts, embeddings, chunk_records
 
             # Step 5: Update document status to ready
             self._supabase.table("documents").update(

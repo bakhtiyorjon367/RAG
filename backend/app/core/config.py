@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
 
+    # Ingestion (memory-bounded processing for low-RAM instances)
+    # Embed + insert chunks in small batches so peak memory stays flat
+    # regardless of document size. INGEST_BATCH_SIZE = chunks per batch.
+    # EMBED_PARALLEL = fastembed worker processes (1 = in-process, safest on
+    # low-memory hosts; >1 spawns subprocesses that can be OOM-killed).
+    INGEST_BATCH_SIZE: int = 16
+    EMBED_PARALLEL: int = 1
+
     # Reranking (FlashRank: jina-reranker-v2-base-multilingual for KO/EN)
     RERANK_MODEL: str = "jinaai/jina-reranker-v2-base-multilingual"
 

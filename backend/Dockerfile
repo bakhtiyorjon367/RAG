@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Flush stdout/stderr so logs (incl. ingestion progress) appear in `docker logs`.
+ENV PYTHONUNBUFFERED=1
+
 # Install system deps for docling and sentence-transformers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \

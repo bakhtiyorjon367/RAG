@@ -53,6 +53,11 @@ class EmbeddingService:
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for a batch of texts (e.g. document chunks).
 
+        Embedding runs single-process (``parallel=1``) by default to keep peak
+        memory predictable on low-RAM hosts. Callers should feed small batches
+        (see ``settings.INGEST_BATCH_SIZE``) so memory stays flat regardless of
+        document size.
+
         Args:
             texts: List of text strings to embed.
 
@@ -66,7 +71,13 @@ class EmbeddingService:
             self.load_model()
 
         prefixed = self._prefix_for_model(texts, "passage:")
-        embeddings = list(self._model.embed(prefixed))
+        embeddings = list(
+            self._model.embed(
+                prefixed,
+                batch_size=len(prefixed),
+                parallel=settings.EMBED_PARALLEL,
+            )
+        )
         return [emb.tolist() for emb in embeddings]
 
     def embed_query(self, query: str) -> list[float]:
