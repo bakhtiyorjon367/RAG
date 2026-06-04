@@ -17,17 +17,20 @@ class CustomEmbeddingSpec:
     model_file: str
     size_in_gb: float
     hf_repo: str
+    additional_files: tuple[str, ...] = ()
 
 
-# intfloat/multilingual-e5-base is not in TextEmbedding.list_supported_models() yet.
+# intfloat/multilingual-e5-base is not built into fastembed yet. The official intfloat
+# HF repo uses nested onnx/ paths that trip fastembed's file verification, so we load
+# from a flat ONNX port (same E5-base weights, 768-dim, query:/passage: prefixes).
 CUSTOM_EMBEDDING_MODELS: dict[str, CustomEmbeddingSpec] = {
     "intfloat/multilingual-e5-base": CustomEmbeddingSpec(
         model="intfloat/multilingual-e5-base",
         dim=768,
-        # Quantized ONNX (~555 MB) — smaller image than full fp32 model.onnx (~1.1 GB).
-        model_file="onnx/model_O4.onnx",
-        size_in_gb=0.55,
-        hf_repo="intfloat/multilingual-e5-base",
+        model_file="model_opt2_QInt8.onnx",
+        size_in_gb=0.28,
+        hf_repo="nixiesearch/multilingual-e5-base-onnx",
+        additional_files=("sentencepiece.bpe.model",),
     ),
 }
 
@@ -53,13 +56,7 @@ def register_custom_embedding_models() -> None:
             description="Multilingual E5 base (768-dim, query:/passage: prefixes)",
             license="mit",
             size_in_gb=spec.size_in_gb,
-            additional_files=[
-                "onnx/sentencepiece.bpe.model",
-                "onnx/tokenizer.json",
-                "onnx/tokenizer_config.json",
-                "onnx/special_tokens_map.json",
-                "onnx/config.json",
-            ],
+            additional_files=list(spec.additional_files),
         )
 
     _REGISTERED = True
