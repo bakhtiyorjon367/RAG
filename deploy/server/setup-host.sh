@@ -26,12 +26,8 @@ sudo mkdir -p "$FRONTEND_DIR"
 sudo chown -R "$USER":"$USER" "$FRONTEND_DIR"
 
 echo "==> Install nginx site config"
-sudo cp "$ROOT/deploy/nginx/rag.conf" /etc/nginx/conf.d/rag.conf
-sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-sudo rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
-sudo nginx -t
+bash "$ROOT/deploy/server/apply-nginx.sh" "$ROOT/deploy/nginx/rag.conf"
 sudo systemctl enable nginx
-sudo systemctl reload nginx
 
 echo "==> Ensure docker starts on boot"
 sudo systemctl enable docker 2>/dev/null || true

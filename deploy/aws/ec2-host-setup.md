@@ -38,14 +38,51 @@ The frontend job copies `frontend/dist/*` here via scp.
 
 ## 4. nginx config
 
+**Dedicated EC2 (only RAG on this machine):**
+
 ```bash
 git clone https://github.com/bakhtiyorjon367/RAG.git ~/RAG
-sudo cp ~/RAG/deploy/nginx/rag.conf /etc/nginx/conf.d/rag.conf
-sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-sudo nginx -t && sudo systemctl reload nginx
+bash ~/RAG/deploy/server/apply-nginx.sh ~/RAG/deploy/nginx/rag.conf
 ```
 
-Or run `bash ~/RAG/deploy/server/setup-host.sh`.
+**Shared EC2 (another app already on port 80, e.g. `root /var/www/html/dist`):**
+
+Use a separate port for RAG so you do not replace the existing site:
+
+```bash
+git clone https://github.com/bakhtiyorjon367/RAG.git ~/RAG
+RAG_NGINX_COEXIST=1 bash ~/RAG/deploy/server/apply-nginx.sh ~/RAG/deploy/nginx/rag-port8080.conf
+```
+
+- Open RAG at `http://<EC2_IP>:8080/`
+- AWS security group: inbound **TCP 8080** (you already have this on `launch-wizard-2`)
+- Supabase **Site URL** / **Redirect URLs**: use `http://<EC2_IP>:8080` (include the port)
+- Backend `CORS_ORIGINS`: `["http://<EC2_IP>:8080"]` if you ever call the API cross-origin
+
+Or run `bash ~/RAG/deploy/server/setup-host.sh` on a dedicated host only.
+
+### Which port to pick when several are open?
+
+Security group rules only allow traffic; they do not reserve a port. On the
+instance, see what is actually listening:
+
+```bash
+sudo ss -tlnp | grep -E ':(80|443|3000|8080|9000|5678|30000|30001|30002)\s'
+```
+
+| Port | Typical use | RAG? |
+|------|-------------|------|
+| **80** | Your existing app (`/var/www/html/dist`) | No — leave for that app |
+| **443** | HTTPS / reverse proxy | Only if you terminate TLS there |
+| **8080** | Alt HTTP | **Yes — recommended for RAG** |
+| 3000 | Dev UI (React, etc.) | Avoid unless you know it is free |
+| 5678 | Often n8n | Avoid |
+| 9000 | Often Portainer / MinIO console | Avoid |
+| 30000–30002 | Custom / Node services | Avoid unless confirmed free |
+
+Default CI settings (repo **Variables**, optional): `RAG_NGINX_PORT=8080`,
+`RAG_NGINX_COEXIST=1`. Use `http://<EC2_IP>:8080/` in the browser and in
+Supabase auth URLs.
 
 ## 5. GitHub repository secrets
 
@@ -86,32 +123,37 @@ for this deploy path.
 
 ## Troubleshooting: nginx `403 Forbidden` on `/`
 
-`curl -I http://127.0.0.1/` returning **403** almost always means the **default**
-nginx site is still the `default_server`, not `rag.conf`, and/or the frontend
-directory is empty.
+`curl -I http://127.0.0.1/` returning **403** while `/var/www/rag-frontend/index.html`
+exists means **another nginx vhost is still bound to port 80**, not `rag.conf`.
 
-On the EC2 host:
+Common symptom — `nginx -T` shows the wrong document root:
 
-```bash
-# 1) Frontend files present?
-ls -la /var/www/rag-frontend/index.html /var/www/rag-frontend/assets/
-
-# 2) Which server block answers port 80?
-sudo nginx -T 2>/dev/null | grep -E "listen 80|root |server_name"
-
-# 3) Install RAG site and disable Ubuntu default
-sudo cp ~/RAG/deploy/nginx/rag.conf /etc/nginx/conf.d/rag.conf
-sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
-sudo nginx -t && sudo systemctl reload nginx
-
-# 4) Should be 200 and proxy API
-curl -I http://127.0.0.1/
-curl -fsS http://127.0.0.1:8000/health
-curl -I http://127.0.0.1/api/v1/documents  # 401 without JWT is OK; confirms nginx → backend
+```text
+root /var/www/html/dist;    # stale / other app — NOT the RAG deploy path
 ```
 
-Re-run the GitHub **Deploy** workflow if `index.html` is missing (frontend job
-copies `frontend/dist/` to `/var/www/rag-frontend`).
+instead of `root /var/www/rag-frontend;`.
+
+On the EC2 host (clone repo once; `~/RAG` may be empty if you never cloned):
+
+```bash
+git clone https://github.com/bakhtiyorjon367/RAG.git /tmp/RAG-install
+bash /tmp/RAG-install/deploy/server/apply-nginx.sh /tmp/RAG-install/deploy/nginx/rag.conf
+
+# Verify active config
+sudo nginx -T 2>/dev/null | grep -E "listen 80|default_server|root "
+curl -I http://127.0.0.1/    # expect HTTP/1.1 200
+curl -fsS http://127.0.0.1:8000/health
+```
+
+To see which file defined the bad root before disabling it:
+
+```bash
+sudo grep -rn 'html/dist\|rag-frontend' /etc/nginx/
+```
+
+Re-run the GitHub **Deploy** workflow — the frontend job now copies `rag.conf` and
+runs `apply-nginx.sh` on every deploy (no server-side git clone required).
 
 ## Troubleshooting: two different IPs / cross-origin frame errors
 

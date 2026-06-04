@@ -30,6 +30,15 @@ git clone https://github.com/bakhtiyorjon367/RAG.git ~/RAG
 bash ~/RAG/deploy/server/setup-host.sh
 ```
 
+## GitHub repository variables (optional)
+
+| Variable | Default in CI | Meaning |
+|----------|---------------|---------|
+| `RAG_NGINX_PORT` | `8080` | Public nginx port for the RAG UI (`80` on a dedicated host) |
+| `RAG_NGINX_COEXIST` | `1` | `1` = do not disable other nginx sites; `0` = RAG owns port 80 |
+
+Set **Variables** (not secrets) under repo Settings → Secrets and variables → Actions.
+
 ## GitHub secrets for GHCR pull on EC2
 
 CI pushes with `GITHUB_TOKEN` (automatic). The EC2 host must **pull** the
